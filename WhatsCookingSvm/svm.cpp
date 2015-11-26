@@ -23,6 +23,7 @@
 #include <fstream>
 
 #include <map>
+#include <list>
 
 #include <dlib/rand.h>
 
@@ -34,19 +35,19 @@ using namespace std;
 using namespace dlib;
 
 // Our data will be 2-dimensional data. So declare an appropriate type to contain these points.
-typedef matrix<double> sample_type;
+typedef std::map<unsigned long, double> sample_type;
 
 // ----------------------------------------------------------------------------------------
 
 void parse_data(std::vector<sample_type>& samples, std::vector<string>& labels);
 void get_test_data(std::vector<sample_type>& samples, std::vector<string>& ids);
 
-struct val_greater_than : binary_function < pair<string,int>, pair<string,int>, bool > {
+/*struct val_greater_than : binary_function < pair<string,int>, pair<string,int>, bool > {
 	bool operator() (const pair<string,int>& x, const pair<string,int>& y) const
 	{
 		return x.second>y.second;
 	}
-}val_gt;
+}val_gt;*/
 
 // ----------------------------------------------------------------------------------------
 
@@ -54,7 +55,6 @@ int main()
 {
     try
     {
-		//samples to return
 		std::vector<sample_type> samples;
 		std::vector<string> labels;
 		parse_data(samples, labels);
@@ -82,12 +82,12 @@ int main()
         // support vector machine and polynomial kernels.  The particular details don't matter.
         // The point of this part of the example is that you can use any kind of trainer object
         // with the one_vs_one_trainer.
-        typedef linear_kernel<sample_type> linear_kernel;
+        typedef sparse_linear_kernel<sample_type> sparse_kernel;
 
         // make the binary trainers and set some parameters
-        svm_c_linear_trainer<linear_kernel> linear_trainer;
+        svm_c_linear_trainer<sparse_kernel> linear_trainer;
         ///poly_trainer.set_kernel(poly_kernel(0.1, 1, 2));
-        linear_trainer.set_c(5);
+        linear_trainer.set_c(1);
 
 		trainer.set_trainer(linear_trainer);
         // Now tell the one_vs_one_trainer that, by default, it should use the rbf_trainer
@@ -99,7 +99,16 @@ int main()
         //trainer.set_trainer(poly_trainer, "greek, 2);
 
         // Now let's do 5-fold cross-validation using the one_vs_one_trainer we just setup.
-//cout << "cross validation: \n" << cross_validate_multiclass_trainer(trainer, samples, labels, 5) << endl;
+		cout << "cross validation: \n" << cross_validate_multiclass_trainer(trainer, samples, labels, 5) << endl;
+
+		/*for(int i = 2; i <= 10; i++)
+		{
+			linear_trainer.set_c(i);
+			trainer.set_trainer(linear_trainer);
+			cout << "validating i= " << i << endl;
+			cout << "cross validation: \n" << cross_validate_multiclass_trainer(trainer, samples, labels, 5) << endl;
+		}*/
+
         // The output is shown below.  It is the confusion matrix which describes the results.  Each row 
         // corresponds to a class of data and each column to a prediction.  Reading from top to bottom, 
         // the rows correspond to the class labels if the labels have been listed in sorted order.  So the
@@ -132,7 +141,7 @@ int main()
 
         // If you want to save a one_vs_one_decision_function to disk, you can do
         // so.  However, you must declare what kind of decision functions it contains. 
-        one_vs_all_decision_function<ovo_trainer, 
+      /*  one_vs_all_decision_function<ovo_trainer, 
         decision_function<linear_kernel>  // This is the output of the poly_traine
         > df2, df3;
 
@@ -144,14 +153,14 @@ int main()
 
         // load the function back in from disk and store it in df3.  
         deserialize("df.dat") >> df3;
-
+		*/
 
         // Test df3 to see that this worked.
-        cout << endl;
-        cout << "predicted label: "<< df3(samples[0])  << ", true label: "<< labels[0] << endl;
-        cout << "predicted label: "<< df3(samples[90]) << ", true label: "<< labels[90] << endl;
+      //  cout << endl;
+      //  cout << "predicted label: "<< df(samples[0])  << ", true label: "<< labels[0] << endl;
+      //  cout << "predicted label: "<< df(samples[90]) << ", true label: "<< labels[90] << endl;
         // Test df3 on the samples and labels and print the confusion matrix.
-        cout << "test deserialized function: \n" << test_multiclass_decision_function(df3, samples, labels) << endl;
+        //cout << "test deserialized function: \n" << test_multiclass_decision_function(df3, samples, labels) << endl;
 
 
 		//need to read test data
@@ -165,7 +174,7 @@ int main()
 		results << "id,cuisine\n";
 		for(size_t i = 0; i < test_ids.size(); ++i)
 		{
-			results << test_ids[i] << "," << df3(test_samples[i]) << "\n";
+			results << test_ids[i] << "," << df(test_samples[i]) << "\n";
 		}
 
 		results.close();
@@ -223,7 +232,7 @@ void parse_data(std::vector<sample_type>& samples, std::vector<string>& labels)
 		return;
     }
 
-	std::map<std::string, size_t> frequency_map;
+	std::map<std::string, size_t> ingredients_map;
     for (size_t i = 0; i < root.size(); i++) {
 
         string cuisine = root[i].get("cuisine", "null").asString();
@@ -232,77 +241,25 @@ void parse_data(std::vector<sample_type>& samples, std::vector<string>& labels)
 		{
 			string ingredient_string= ingredients[j].asString();
 
-			//lower case everything
-			//std::transform(ingredient_string.begin(), ingredient_string.end(), ingredient_string.begin(), ::tolower);
-
-			//remove punctuation
-			//ingredient_string.erase(std::remove_if(ingredient_string.begin(), ingredient_string.end(), ispunct), ingredient_string.end());
-
-			//only take last two words
-			/*size_t found1 = ingredient_string.find_last_of( " " );
-			stringstream sstr(ingredient_string);
-			std::vector<string> vstr;
-
-			while(sstr >> ingredient_string)
+			
+			if (ingredients_map.find(ingredient_string) == ingredients_map.end())
 			{
-			  vstr.push_back(ingredient_string);
-			}
-
-			if(vstr.size() >= 2)
-				ingredient_string = vstr[vstr.size()-2] + " " + vstr[vstr.size()-1];
-			else
-				ingredient_string = vstr[0];
-
-			//Stemming
-			wchar_t* UnicodeTextBuffer = new wchar_t[ingredient_string.length()+1];
-			std::wmemset(UnicodeTextBuffer, 0, ingredient_string.length()+1);
-			std::mbstowcs(UnicodeTextBuffer, ingredient_string.c_str(), ingredient_string.length());
-			std::wstring wingredient = UnicodeTextBuffer;
-
-			stemming::english_stem<> StemEnglish;
-			StemEnglish(wingredient);
-
-			ingredient_string = string(wingredient.begin(), wingredient.end());*/
-
-			if (frequency_map.find(ingredient_string) == frequency_map.end())
-			{
-				frequency_map[ingredient_string] = 1;
+				ingredients_map[ingredient_string] = ingredients_map.size();
 			} 
-			else 
-			{
-				int x = frequency_map[ingredient_string];
-				frequency_map[ingredient_string] = x + 1;
-			}
 		}
 
 		labels.push_back(cuisine);
     }
-	cout << "number of recipes: " << labels.size() << endl;
-	cout << "number of ingredients: " << frequency_map.size() << endl;
 
-	std::vector<pair<string, int>> mapcopy(frequency_map.begin(), frequency_map.end());
-	sort(mapcopy.begin(), mapcopy.end(), val_gt);
-
-	mapcopy.resize(std::min<size_t>(mapcopy.size(), 2000));
-	
-	std::map<std::string, size_t> ingredients_map;
-	for(size_t i = 0; i < mapcopy.size(); ++i)
-	{
-		ingredients_map[mapcopy[i].first] = ingredients_map.size();
-	}
-
-	cout << "number of ingredients: " << ingredients_map.size() << endl;
-	cout << "root size: " << root.size();
-	cout << "label size: " << labels.size();
 	samples.reserve(labels.size());
+	sample_type sample;
+
+	cout << "number of recipes: " << labels.size() << endl;
+	cout << "number of ingredients: " << ingredients_map.size();
 
 	for(size_t i = 0; i < root.size(); ++i) {
 		const Json::Value ingredients = root[i].get("ingredients", "null");
-
-		matrix<double> sample;
-		sample.set_size(ingredients_map.size(), 1);
-
-		sample = 0;
+		sample.clear();
 
 		for (size_t j = 0; j < ingredients.size(); ++j)
 		{
@@ -310,11 +267,11 @@ void parse_data(std::vector<sample_type>& samples, std::vector<string>& labels)
 			if (ingredients_map.find(ingredient_string) != ingredients_map.end())
 			{
 				int index = ingredients_map[ingredient_string];
-				cout << "index to put: " << index << "for i= " << i << endl;
-				sample(index) = 1;
+				cout << "index to put: " << index << " for i= " << i << endl;
+				sample[index] = 1;
 			}
 		}
-
+		cout << "i= " << i << " had " << sample.size() << " ingredients" << endl;
 		samples.push_back(sample);
 	}
 
@@ -329,7 +286,7 @@ void get_test_data(std::vector<sample_type>& samples, std::vector<string>& ids)
 
 	Json::Value root;   // will contains the root value after parsing.
     Json::Reader reader;
-    ifstream file("test.json", ifstream::binary);
+    ifstream file("train.json", ifstream::binary);
 
     bool parsedSuccess = reader.parse(file, root, false);
 
@@ -339,7 +296,7 @@ void get_test_data(std::vector<sample_type>& samples, std::vector<string>& ids)
 		return;
     }
 
-	std::map<std::string, size_t> frequency_map;
+	std::map<std::string, size_t> ingredients_map;
     for (size_t i = 0; i < root.size(); i++) {
 
         string id = root[i].get("id", "null").asString();
@@ -348,43 +305,20 @@ void get_test_data(std::vector<sample_type>& samples, std::vector<string>& ids)
 		{
 			string ingredient_string= ingredients[j].asString();
 
-			if (frequency_map.find(ingredient_string) == frequency_map.end())
+			if (ingredients_map.find(ingredient_string) == ingredients_map.end())
 			{
-				frequency_map[ingredient_string] = 1;
+				ingredients_map[ingredient_string] = ingredients_map.size();
 			} 
-			else 
-			{
-				int x = frequency_map[ingredient_string];
-				frequency_map[ingredient_string] = x + 1;
-			}
 		}
 
 		ids.push_back(id);
     }
-	cout << "number of recipes: " << ids.size() << endl;
-	cout << "number of ingredients: " << frequency_map.size() << endl;
 
-	std::vector<pair<string, int>> mapcopy(frequency_map.begin(), frequency_map.end());
-	sort(mapcopy.begin(), mapcopy.end(), val_gt);
-
-	mapcopy.resize(std::min<size_t>(mapcopy.size(), 2000));
-	
-	std::map<std::string, size_t> ingredients_map;
-	for(size_t i = 0; i < mapcopy.size(); ++i)
-	{
-		ingredients_map[mapcopy[i].first] = ingredients_map.size();
-	}
-
-	cout << "number of ingredients: " << ingredients_map.size() << endl;
 	samples.reserve(ids.size());
+	sample_type sample;
 
 	for(size_t i = 0; i < root.size(); ++i) {
 		const Json::Value ingredients = root[i].get("ingredients", "null");
-
-		matrix<double> sample;
-		sample.set_size(ingredients_map.size(), 1);
-
-		sample = 0;
 
 		for (size_t j = 0; j < ingredients.size(); ++j)
 		{
@@ -392,8 +326,7 @@ void get_test_data(std::vector<sample_type>& samples, std::vector<string>& ids)
 			if (ingredients_map.find(ingredient_string) != ingredients_map.end())
 			{
 				int index = ingredients_map[ingredient_string];
-				//cout << "index to put: " << index << "for i= " << i << endl;
-				sample(index) = 1;
+				sample[index] = 1;
 			}
 		}
 
@@ -401,7 +334,7 @@ void get_test_data(std::vector<sample_type>& samples, std::vector<string>& ids)
 	}
 
 	file.close();
-	cout << "finished test data- number of samples: " << samples.size() << endl;
+	cout << "number of samples: " << samples.size() << endl;
 }
 
 // ----------------------------------------------------------------------------------------
